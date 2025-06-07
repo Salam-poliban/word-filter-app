@@ -1,69 +1,82 @@
 import streamlit as st
 import pandas as pd
 
-# === Load data ===
+# Load data kata
 df = pd.read_csv("five_letter_words_new.csv")
 words = df["Word"].dropna().astype(str).str.lower().unique()
 
-# === Filter kata berdasarkan huruf ===
-def filter_words_by_letters(word_list, required_letters):
-    required_letters = set(letter.lower() for letter in required_letters)
-    return [word for word in word_list if required_letters.issubset(set(word.lower()))]
+st.set_page_config(page_title="Wordle Assistant", layout="centered")
+st.title("🔤 Wordle Assistant")
 
-# === Filter kata berdasarkan posisi ===
-def filter_words_by_positions(word_list, position_dict):
+st.markdown("Masukkan huruf dan status warna seperti Wordle (⬛ 🟨 🟩):")
+
+# Mapping warna
+warna_opsi = {
+    "gray": "⬛",    # Tidak ada huruf
+    "yellow": "🟨",  # Huruf ada tapi salah posisi
+    "green": "🟩"    # Huruf dan posisi tepat
+}
+warna_keys = list(warna_opsi.keys())
+
+inputs = []
+statuses = []
+
+# Tampilkan inputan horizontal per huruf
+for i in range(5):
+    col1, col2 = st.columns([1, 1.5])
+    with col1:
+        huruf = st.text_input(f" ", max_chars=1, key=f"huruf_{i}", placeholder=f"Huruf {i+1}")
+        inputs.append(huruf.lower())
+    with col2:
+        status = st.radio(
+            label=" ",
+            options=warna_keys,
+            format_func=lambda x: warna_opsi[x],
+            key=f"status_{i}",
+            horizontal=True
+        )
+        statuses.append(status)
+
+# === Fungsi filter
+def wordle_filter(word_list, inputs, statuses):
+    contains = set()
+    must_not_contain = set()
+    must_be_at_pos = {}
+    not_at_pos = {}
+
+    for i, (ch, status) in enumerate(zip(inputs, statuses)):
+        if not ch:
+            continue
+        if status == "green":
+            must_be_at_pos[i] = ch
+            contains.add(ch)
+        elif status == "yellow":
+            not_at_pos[i] = ch
+            contains.add(ch)
+        elif status == "gray":
+            must_not_contain.add(ch)
+
     result = []
     for word in word_list:
-        match = True
-        for pos, char in position_dict.items():
-            if len(word) <= pos or word[pos].lower() != char.lower():
-                match = False
+        valid = True
+        for i, ch in must_be_at_pos.items():
+            if word[i] != ch:
+                valid = False
                 break
-        if match:
+        for i, ch in not_at_pos.items():
+            if ch not in word or word[i] == ch:
+                valid = False
+                break
+        if not contains.issubset(set(word)):
+            valid = False
+        if any(ch in word for ch in must_not_contain - contains):
+            valid = False
+        if valid:
             result.append(word)
     return result
 
-# === UI ===
-st.set_page_config(page_title="Word Finder", layout="centered")
-st.title("🔤 5-Letter Word Filter")
-
-st.markdown("Masukkan huruf pada posisi tertentu (boleh dikosongkan):")
-
-col1, col2, col3, col4, col5 = st.columns(5)
-
-with col1:
-    h1 = st.text_input("Huruf ke-1", max_chars=1)
-with col2:
-    h2 = st.text_input("Huruf ke-2", max_chars=1)
-with col3:
-    h3 = st.text_input("Huruf ke-3", max_chars=1)
-with col4:
-    h4 = st.text_input("Huruf ke-4", max_chars=1)
-with col5:
-    h5 = st.text_input("Huruf ke-5", max_chars=1)
-
-huruf_bebas = st.text_input("Huruf tambahan (bebas)", max_chars=5)
-
-# === Proses pencarian ===
+# Tombol pencarian
 if st.button("🔍 Cari Kata"):
-
-    # Buat dict posisi
-    posisi = {}
-    if h1: posisi[0] = h1
-    if h2: posisi[1] = h2
-    if h3: posisi[2] = h3
-    if h4: posisi[3] = h4
-    if h5: posisi[4] = h5
-
-    # Filter berdasarkan posisi
-    hasil = filter_words_by_positions(words, posisi)
-
-    # Gabungkan semua huruf yang harus ada
-    required_letters = list(huruf_bebas.lower())
-    required_letters += [c for c in [h1, h2, h3, h4, h5] if c]
-
-    # Filter berdasarkan huruf yang terkandung
-    hasil = filter_words_by_letters(hasil, required_letters)
-
-    st.markdown(f"### ✨ Ditemukan {len(hasil)} kata:")
-    st.write(sorted(hasil))
+    hasil = wordle_filter(words, inputs, statuses)
+    st.success(f"Ditemukan {len(hasil)} kata:")
+    st.write(hasil)
